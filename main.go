@@ -5,20 +5,25 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
+	"github.com/library-development/go-nameconv"
 	"github.com/library-development/go-schemacafe"
-	"github.com/library-development/go-util"
 )
 
 func main() {
 	flag.Parse()
 	lang := flag.Arg(0)
-	from := []string{}
-	to := "."
+	from := schemacafe.Path{}
+	to := flag.Arg(1)
+	if to == "" {
+		to = "."
+	}
 	switch lang {
 	case "go":
-		WriteGo(from, to)
+		err := WriteGo(from, to)
+		if err != nil {
+			panic(err)
+		}
 	case "ts":
 		WriteTS(from, to)
 	default:
@@ -27,21 +32,24 @@ func main() {
 }
 
 func PrintUsage() {
-	println("Usage: shemac [go|ts]")
+	fmt.Println("Usage: shemac [go|ts]")
 }
 
-func WriteGo(from []string, to string) error {
-	path := path(from)
-
-	fmt.Printf("Pulling from schema.cafe%s\n", path)
-
+func WriteGo(from schemacafe.Path, to string) error {
 	client := schemacafe.NewClient()
-	r := client.Get(path)
+	fmt.Printf("Pulling from %s%s...", client.APIURL, from.String())
+	r := client.Get(from)
 
 	if r.IsFolder {
-		os.MkdirAll(to, 0755)
+		fmt.Println(" folder found")
+		fmt.Printf("Making sure directory %s exists...", to)
+		err := os.MkdirAll(to, 0755)
+		if err != nil {
+			return err
+		}
+		fmt.Println(" done")
 		for _, entry := range r.Folder.Contents {
-			err := WriteGo(append(from, entry.Name), to+"/"+entry.Name)
+			err := WriteGo(from.Append(entry.Name), to+"/"+entry.Name.SnakeCase())
 			if err != nil {
 				return err
 			}
@@ -49,31 +57,70 @@ func WriteGo(from []string, to string) error {
 	}
 
 	if r.IsSchema {
-		var buf bytes.Buffer
-		buf.WriteString("package ")
-		buf.WriteString(pkgName(to))
-		buf.WriteString("\n")
-
-		buf.WriteString("type ")
-		buf.WriteString(name(to))
-		buf.WriteString(" struct {\n")
-
-		for _, field := range r.Schema.Fields {
-			buf.WriteString("\t")
-			buf.WriteString(field.Name)
-			buf.WriteString(" ")
-			buf.WriteString(field.Type)
-			buf.WriteString(" `json:\"")
-			buf.WriteString(field.Name)
-			buf.WriteString("\"`\n")
+		fmt.Println(" schema found")
+		if len(from) == 0 {
+			return fmt.Errorf("no schema at root")
 		}
 
-		buf.WriteString("}\n")
+		var pkg nameconv.Name
+		if len(from) > 1 {
+			pkg = from.SecondLast()
+		} else {
+			pkg = nameconv.Name{"types"}
+		}
 
-		err := os.WriteFile(to+".go", buf.Bytes(), os.ModePerm)
+		name := from.Last()
+
+		var typeDef bytes.Buffer
+		typeDef.WriteString("type ")
+		typeDef.WriteString(name.PascalCase())
+		typeDef.WriteString(" struct {\n")
+
+		imports := map[string]bool{}
+		for _, field := range r.Schema.Fields {
+			if field.Type.BaseType.Path.Length() > 0 {
+				imports["github.com/schema-cafe/go-types"+field.Type.BaseType.Path.String()] = true
+			}
+
+			typeDef.WriteString("\t")
+			typeDef.WriteString(field.Name.PascalCase())
+			typeDef.WriteString(" ")
+			typeDef.WriteString(field.Type.Golang(from))
+			typeDef.WriteString(" `json:\"")
+			typeDef.WriteString(field.Name.CamelCase())
+			typeDef.WriteString("\"`\n")
+		}
+
+		typeDef.WriteString("}\n")
+
+		var buf bytes.Buffer
+		buf.WriteString("package ")
+		buf.WriteString(pkg.AllLowerNoSpaces())
+		buf.WriteString("\n\n")
+
+		if len(imports) > 0 {
+			buf.WriteString("import (\n")
+			for imp := range imports {
+				buf.WriteString("\t\"")
+				buf.WriteString(imp)
+				buf.WriteString("\"\n")
+			}
+			buf.WriteString(")\n\n")
+		}
+
+		buf.WriteString(typeDef.String())
+
+		path := to + ".go"
+		fmt.Printf("Writing Go file to %s...", path)
+		err := os.WriteFile(path, buf.Bytes(), os.ModePerm)
 		if err != nil {
 			return err
 		}
+		fmt.Println(" done")
+	}
+
+	if !r.IsFolder && !r.IsSchema {
+		fmt.Println(" not found")
 	}
 
 	return nil
@@ -84,12 +131,5 @@ func writeGoFile(path string) error {
 	return nil
 }
 
-func WriteTS(from []string, to string) {
-	fmt.Printf("Pulling from schema.cafe%s\n", from)
-}
-
-func path(p []string) string {
-	return strings.Join(util.ArrayMap(p, func(s string) string {
-		return "/" + s
-	}), "")
+func WriteTS(from schemacafe.Path, to string) {
 }
