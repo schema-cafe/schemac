@@ -12,3 +12,8 @@ Write Go types to the directory `pkg/types`:
 ```bash
 schemac go pkg/types
 ```
+
+Write TypeScript types to the directory `types`:
+```bash
+schemac ts types
+```
