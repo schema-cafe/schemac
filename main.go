@@ -24,15 +24,13 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-	case "ts":
-		WriteTS(from, to)
 	default:
 		PrintUsage()
 	}
 }
 
 func PrintUsage() {
-	fmt.Println("Usage: shemac [go|ts]")
+	fmt.Println("Usage: schemac [go] [dir]")
 }
 
 func WriteGo(from schemacafe.Path, to string) error {
@@ -124,12 +122,4 @@ func WriteGo(from schemacafe.Path, to string) error {
 	}
 
 	return nil
-}
-
-func writeGoFile(path string) error {
-	fmt.Printf("Writing %s\n", path)
-	return nil
-}
-
-func WriteTS(from schemacafe.Path, to string) {
 }
