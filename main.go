@@ -7,6 +7,8 @@ import (
 	"github.com/library-development/go-schemacafe"
 )
 
+const usage = "Usage: schemac [go|ts] [dir]"
+
 func main() {
 	flag.Parse()
 	lang := flag.Arg(0)
@@ -27,10 +29,6 @@ func main() {
 			panic(err)
 		}
 	default:
-		PrintUsage()
+		fmt.Println(usage)
 	}
-}
-
-func PrintUsage() {
-	fmt.Println("Usage: schemac [go|ts] [dir]")
 }
